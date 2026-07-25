@@ -213,3 +213,15 @@ volume handles this; a host bind mount needs `chown -R 1000:1000`.
 - CI (`.github/workflows/`): `build-check.yml` compiles and runs the unit tests on push;
   `docker-build-release.yml` builds, runs the container tests, and pushes multi-arch
   images on a `v*` tag
+
+## Releasing & deploying (the `push-to-portainer` skill)
+
+After **successfully completing a feature** (change implemented, tests/build passing),
+run the **`push-to-portainer`** skill to release and deploy it: it commits & pushes to
+`main`, cuts a release with `scripts/make-release`, watches the GitHub Actions build
+(fixing any failures), and then redeploys the live `pywhispr-web` stack on the Portainer
+server (moria) to pull the new image.
+
+**Always get explicit confirmation from the user before the Portainer update (Stage 4).**
+The redeploy restarts the live service, so pause after the release build is green and ask
+the user to approve before running the redeploy — never update Portainer automatically.
