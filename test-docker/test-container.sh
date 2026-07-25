@@ -154,28 +154,107 @@ else
 fi
 echo ""
 
-# Test 6: Data API endpoint
-echo -e "${BLUE}🔗 Test 6: Testing data API endpoint...${NC}"
+# Test 6: Server configuration API
+echo -e "${BLUE}🔗 Test 6: Testing server configuration API...${NC}"
 api_response=$(curl -s -w "%{http_code}" \
     -b cookies.txt \
-    http://localhost:5000/api/data \
+    http://localhost:5000/api/servers \
     -o api-response.json)
 
 if [ "$api_response" = "200" ]; then
-    echo -e "${GREEN}✅ Data API working (HTTP $api_response)${NC}"
+    echo -e "${GREEN}✅ Server configuration API working (HTTP $api_response)${NC}"
     # Check if response contains expected data
-    if grep -q '"message"' api-response.json && grep -q '"status"' api-response.json; then
+    if grep -q '"servers"' api-response.json && grep -q '"cache_ttl_seconds"' api-response.json; then
         echo -e "${GREEN}   Response contains expected JSON structure${NC}"
     else
         echo -e "${YELLOW}   Warning: Response may not contain expected data structure${NC}"
     fi
     rm -f api-response.json
 else
-    echo -e "${RED}❌ Data API failed (HTTP $api_response)${NC}"
+    echo -e "${RED}❌ Server configuration API failed (HTTP $api_response)${NC}"
     exit 1
 fi
 echo ""
 
+# Test 6b: The config volume must be writable by the non-root container user,
+# otherwise saving servers fails only once a real user tries it.
+echo -e "${BLUE}💾 Test 6b: Testing server configuration is writable...${NC}"
+put_response=$(curl -s -w "%{http_code}" \
+    -b cookies.txt \
+    -X PUT \
+    -H "Content-Type: application/json" \
+    -d '{"servers":[{"name":"container-test","url":"127.0.0.1:9149"}],"cache_ttl_seconds":90}' \
+    http://localhost:5000/api/servers \
+    -o put-response.json)
+
+if [ "$put_response" = "200" ] && grep -q 'http://127.0.0.1:9149' put-response.json; then
+    echo -e "${GREEN}✅ Server list saved and normalised (HTTP $put_response)${NC}"
+
+    # Reading it back proves it reached the volume, not just one worker's memory.
+    curl -s -b cookies.txt http://localhost:5000/api/servers -o reread-response.json
+    if grep -q 'container-test' reread-response.json; then
+        echo -e "${GREEN}   Configuration persisted to the data volume${NC}"
+    else
+        echo -e "${RED}❌ Configuration did not persist${NC}"
+        rm -f put-response.json reread-response.json
+        exit 1
+    fi
+
+    # Leave the container as we found it.
+    curl -s -b cookies.txt -X PUT -H "Content-Type: application/json" \
+        -d '{"servers":[],"cache_ttl_seconds":60}' \
+        http://localhost:5000/api/servers -o /dev/null
+    rm -f put-response.json reread-response.json
+else
+    echo -e "${RED}❌ Could not save server configuration (HTTP $put_response)${NC}"
+    cat put-response.json 2>/dev/null
+    rm -f put-response.json
+    exit 1
+fi
+echo ""
+
+# Test 6c: With no servers configured, the app must say so cleanly rather than
+# erroring, since that is exactly the state a new install is in.
+echo -e "${BLUE}🎙️  Test 6c: Testing readiness with no servers configured...${NC}"
+ready_response=$(curl -s -w "%{http_code}" \
+    -b cookies.txt \
+    http://localhost:5000/api/ready \
+    -o ready-response.json)
+
+if [ "$ready_response" = "200" ] && grep -q '"ready": *false' ready-response.json; then
+    echo -e "${GREEN}✅ Readiness reports no server available (HTTP $ready_response)${NC}"
+    rm -f ready-response.json
+else
+    echo -e "${RED}❌ Readiness endpoint unexpected response (HTTP $ready_response)${NC}"
+    cat ready-response.json 2>/dev/null
+    rm -f ready-response.json
+    exit 1
+fi
+echo ""
+
+# Test 6d: The front-end is useless if its assets are not in the image; the
+# Dockerfile copies static/ explicitly and this catches a missed COPY.
+echo -e "${BLUE}📦 Test 6d: Testing static assets are served...${NC}"
+static_failed=0
+for asset in css/app.css js/app.js js/recorder.js js/capture-worklet.js js/settings.js manifest.webmanifest icons/icon-512.png; do
+    asset_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:5000/static/$asset")
+    if [ "$asset_code" = "200" ]; then
+        echo -e "${GREEN}   ✅ $asset${NC}"
+    else
+        echo -e "${RED}   ❌ $asset (HTTP $asset_code)${NC}"
+        static_failed=1
+    fi
+done
+
+if [ "$static_failed" = "1" ]; then
+    echo -e "${RED}❌ Static assets missing from the image${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ All static assets served${NC}"
+echo ""
+
+# Test 7: Main editor page
+echo -e "${BLUE}📝 Test 7: Testing main editor page...${NC}"
 app_response=$(curl -s -w "%{http_code}" \
     -b cookies.txt \
     http://localhost:5000/ \
@@ -183,14 +262,24 @@ app_response=$(curl -s -w "%{http_code}" \
 
 if [ "$app_response" = "200" ]; then
     echo -e "${GREEN}✅ Main application page accessible (HTTP $app_response)${NC}"
-    
+
     # Check if page contains expected content
     if grep -q "PyWhispr Web" app-response.html; then
         echo -e "${GREEN}   Page contains expected application content${NC}"
     else
         echo -e "${YELLOW}   Warning: Page may not contain expected content${NC}"
     fi
-    
+
+    # The editor and record button are the app; a rendered shell without them
+    # would mean the template stopped extending base.html correctly.
+    if grep -q 'id="editor"' app-response.html && grep -q 'id="record"' app-response.html; then
+        echo -e "${GREEN}   Editor and record button present${NC}"
+    else
+        echo -e "${RED}❌ Editor markup missing from the page${NC}"
+        rm -f app-response.html
+        exit 1
+    fi
+
     rm -f app-response.html
 else
     echo -e "${RED}❌ Main application page failed (HTTP $app_response)${NC}"
@@ -215,7 +304,7 @@ echo -e "${BLUE}⚡ Test 9: Basic performance test...${NC}"
 start_time=$(date +%s%N)
 perf_response=$(curl -s -w "%{http_code}" \
     -b cookies.txt \
-    http://localhost:5000/api/data \
+    http://localhost:5000/api/servers \
     -o /dev/null)
 end_time=$(date +%s%N)
 
@@ -245,8 +334,10 @@ echo -e "${GREEN}✅ Container startup${NC}"
 echo -e "${GREEN}✅ Health check${NC}"
 echo -e "${GREEN}✅ Login page${NC}"
 echo -e "${GREEN}✅ Authentication${NC}"
-echo -e "${GREEN}✅ Data API${NC}"
-echo -e "${GREEN}✅ Main application page${NC}"
+echo -e "${GREEN}✅ Server configuration API${NC}"
+echo -e "${GREEN}✅ Configuration persistence${NC}"
+echo -e "${GREEN}✅ Static assets${NC}"
+echo -e "${GREEN}✅ Main editor page${NC}"
 echo -e "${GREEN}✅ Container logs${NC}"
 echo -e "${GREEN}✅ Performance test${NC}"
 echo ""

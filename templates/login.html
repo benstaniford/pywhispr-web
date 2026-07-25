@@ -1,155 +1,43 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PyWhispr Web - Login</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0;
-            padding: 1rem;
-        }
-        .login-container {
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            width: 100%;
-            max-width: 400px;
-        }
-        .login-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        h1 {
-            color: #333;
-            margin: 0 0 0.5rem 0;
-            font-size: 2rem;
-        }
-        p {
-            color: #666;
-            margin: 0;
-        }
-        .error-message {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 0.75rem;
-            border-radius: 4px;
-            margin-bottom: 1rem;
-            border: 1px solid #f5c6cb;
-        }
-        .form-group {
-            margin-bottom: 1rem;
-        }
-        .form-label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #333;
-            font-weight: 500;
-        }
-        .form-input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 1rem;
-            transition: border-color 0.2s ease;
-            box-sizing: border-box;
-        }
-        .form-input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
-        }
-        .login-button {
-            width: 100%;
-            padding: 0.75rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: transform 0.2s ease;
-        }
-        .login-button:hover {
-            transform: translateY(-1px);
-        }
-        .login-button:active {
-            transform: translateY(0);
-        }
-    </style>
-</head>
-<body>
-    <div class="login-container">
-        <div class="login-header">
-            <h1>PyWhispr Web</h1>
-            <p>Please sign in to continue</p>
-        </div>
+{% extends "base.html" %}
 
-        {% if error %}
-        <div class="error-message">
-            {{ error }}
-        </div>
-        {% endif %}
+{% block title %}Sign in · PyWhispr Web{% endblock %}
+{% block body_class %}login-body{% endblock %}
 
-        <form class="login-form" method="POST">
-            <div class="form-group">
-                <label for="username" class="form-label">Username</label>
-                <input 
-                    type="text" 
-                    id="username" 
-                    name="username" 
-                    class="form-input" 
-                    required 
-                    autocomplete="username"
-                    placeholder="Enter your username"
-                >
-            </div>
+{% block body %}
+<div class="login-card">
+    <img src="{{ url_for('static', filename='icons/icon-512.png') }}" alt="">
+    <h1>PyWhispr Web</h1>
+    <p class="sub">Sign in to start dictating.</p>
 
-            <div class="form-group">
-                <label for="password" class="form-label">Password</label>
-                <input 
-                    type="password" 
-                    id="password" 
-                    name="password" 
-                    class="form-input" 
-                    required 
-                    autocomplete="current-password"
-                    placeholder="Enter your password"
-                >
-            </div>
-
-            <button type="submit" class="login-button">
-                Sign In
-            </button>
-        </form>
+    {% if error %}
+    <div class="error-message" role="alert">
+        {{ error }}
     </div>
+    {% endif %}
 
-    <script>
-        // Focus on username field when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('username').focus();
-        });
+    <form method="POST">
+        {# Carried through the POST so a deep link survives the login round trip. #}
+        <input type="hidden" name="next" value="{{ next }}">
+        <label class="hint" for="username">Username</label>
+        <input type="text" id="username" name="username" class="field" required
+               autocomplete="username" autocapitalize="none" spellcheck="false"
+               placeholder="Username">
 
-        // Handle form submission with Enter key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                const form = document.querySelector('.login-form');
-                const username = document.getElementById('username').value;
-                const password = document.getElementById('password').value;
-                
-                if (username && password) {
-                    form.submit();
-                }
-            }
-        });
-    </script>
-</body>
-</html>
+        <label class="hint" for="password">Password</label>
+        <input type="password" id="password" name="password" class="field" required
+               autocomplete="current-password" placeholder="Password">
+
+        <button type="submit" class="pill-btn primary">Sign in</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Focus the username on a desktop browser, but not on a touch device: it
+    // would throw the on-screen keyboard up over the form immediately.
+    if (!window.matchMedia('(pointer: coarse)').matches) {
+        document.getElementById('username').focus();
+    }
+</script>
+{% endblock %}

@@ -42,11 +42,15 @@ class TestSimple(unittest.TestCase):
         self.assertIn('/login', response.location)
     
     def test_api_endpoint_requires_auth(self):
-        """Test that API endpoint requires authentication"""
-        response = self.app.get('/api/data')
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('/login', response.location)
-    
+        """Test that API endpoint requires authentication
+
+        API routes answer 401 rather than redirecting, because a redirect would
+        reach fetch() as an opaque HTML success.
+        """
+        response = self.app.get('/api/servers')
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()['error']['code'], 'unauthenticated')
+
     def test_login_with_valid_credentials(self):
         """Test login with valid credentials"""
         response = self.app.post('/login', data={
@@ -73,22 +77,33 @@ class TestSimple(unittest.TestCase):
         response = self.app.get('/')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'PyWhispr Web', response.data)
-        self.assertIn(b'Welcome to PyWhispr Web!', response.data)
-    
+        # The editor and its record button are the whole point of the page.
+        self.assertIn(b'id="editor"', response.data)
+        self.assertIn(b'id="record"', response.data)
+
+    def test_authenticated_settings_page(self):
+        """Test settings page when authenticated"""
+        with self.app.session_transaction() as sess:
+            sess['authenticated'] = True
+
+        response = self.app.get('/settings')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'PyWhispr servers', response.data)
+
     def test_authenticated_api_endpoint(self):
         """Test API endpoint when authenticated"""
         with self.app.session_transaction() as sess:
             sess['authenticated'] = True
-        
-        response = self.app.get('/api/data')
+
+        response = self.app.get('/api/servers')
         self.assertEqual(response.status_code, 200)
-        
+
         data = response.get_json()
         self.assertIsNotNone(data)
-        self.assertIn('message', data)
-        self.assertIn('status', data)
-        self.assertEqual(data['status'], 'success')
-    
+        self.assertIn('servers', data)
+        self.assertIn('cache_ttl_seconds', data)
+
+
     def test_logout(self):
         """Test logout functionality"""
         # First authenticate

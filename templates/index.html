@@ -1,133 +1,42 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PyWhispr Web</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 2rem;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 1rem;
-        }
-        h1 {
-            color: #333;
-            margin: 0;
-        }
-        .logout-btn {
-            color: #dc3545;
-            text-decoration: none;
-            padding: 8px 16px;
-            border: 1px solid #dc3545;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-        }
-        .logout-btn:hover {
-            background: #dc3545;
-            color: white;
-        }
-        .content {
-            line-height: 1.6;
-        }
-        .api-demo {
-            margin-top: 2rem;
-            padding: 1rem;
-            background: #f8f9fa;
-            border-radius: 4px;
-        }
-        button {
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-right: 10px;
-        }
-        button:hover {
-            background: #0056b3;
-        }
-        #api-result {
-            margin-top: 1rem;
-            padding: 1rem;
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-family: monospace;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>PyWhispr Web</h1>
-            <a href="/logout" class="logout-btn">Logout</a>
-        </div>
+{% extends "base.html" %}
 
-        <div class="content">
-            <h2>Welcome to PyWhispr Web!</h2>
-            <p>This is the PyWhispr Web application, with authentication, Docker support, and basic infrastructure setup.</p>
-            
-            <h3>Features included:</h3>
-            <ul>
-                <li>Session-based authentication</li>
-                <li>Docker containerization</li>
-                <li>Gunicorn production server</li>
-                <li>Health check endpoint</li>
-                <li>Basic API structure</li>
-                <li>GitHub Actions CI/CD ready</li>
-            </ul>
-            
-            <div class="api-demo">
-                <h3>API Demo</h3>
-                <p>Test the API endpoint:</p>
-                <button onclick="testApi()">Test API</button>
-                <button onclick="testHealth()">Test Health Check</button>
-                <div id="api-result"></div>
-            </div>
-        </div>
+{% block title %}PyWhispr Web{% endblock %}
+
+{% block body %}
+<div class="app">
+    <header class="topbar">
+        <h1>PyWhispr Web</h1>
+        <div class="spacer"></div>
+        <span class="status" id="status" data-state="checking" title="Active PyWhispr server">
+            <span class="dot"></span><span id="status-text">Checking…</span>
+        </span>
+        <a class="icon-btn" href="{{ url_for('settings') }}" aria-label="Settings" title="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <circle cx="12" cy="12" r="3.2"/>
+                <path d="M19.9 14.6a1.7 1.7 0 0 0 .35 1.86l.06.07a2 2 0 0 1-2.83 2.83l-.06-.07a1.7 1.7 0 0 0-2.9 1.21V21a2 2 0 0 1-4 0v-.42a1.7 1.7 0 0 0-2.9-1.2l-.06.06a2 2 0 1 1-2.83-2.83l.06-.07A1.7 1.7 0 0 0 3.4 13.7H3a2 2 0 0 1 0-4h.42a1.7 1.7 0 0 0 1.2-2.9l-.06-.06a2 2 0 0 1 2.83-2.83l.07.06a1.7 1.7 0 0 0 2.89-1.2V3a2 2 0 0 1 4 0v.42a1.7 1.7 0 0 0 2.9 1.2l.06-.06a2 2 0 1 1 2.83 2.83l-.06.07a1.7 1.7 0 0 0 1.2 2.89H21a2 2 0 0 1 0 4h-.42a1.7 1.7 0 0 0-1.56 1.05z" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </a>
+    </header>
+
+    <div class="banner" id="banner" role="status" aria-live="polite" hidden></div>
+
+    <div class="editor-wrap">
+        <textarea id="editor" spellcheck="true" autocapitalize="sentences" aria-label="Transcribed text"
+                  placeholder="Tap the microphone and start talking. Your words appear here, at the cursor."></textarea>
     </div>
 
-    <script>
-        async function testApi() {
-            try {
-                const response = await fetch('/api/data');
-                const data = await response.json();
-                document.getElementById('api-result').innerHTML = 
-                    '<strong>API Response:</strong><br>' + JSON.stringify(data, null, 2);
-            } catch (error) {
-                document.getElementById('api-result').innerHTML = 
-                    '<strong>Error:</strong> ' + error.message;
-            }
-        }
+    <div class="controls">
+        <button type="button" class="pill-btn wide" id="copy">Copy</button>
+        <div class="record-area">
+            <button type="button" id="record" aria-label="Start recording" disabled></button>
+            <span class="record-caption" id="record-caption" aria-live="polite"></span>
+        </div>
+        <button type="button" class="pill-btn wide" id="clear">Clear</button>
+    </div>
+</div>
+{% endblock %}
 
-        async function testHealth() {
-            try {
-                const response = await fetch('/health');
-                const data = await response.json();
-                document.getElementById('api-result').innerHTML = 
-                    '<strong>Health Check:</strong><br>' + JSON.stringify(data, null, 2);
-            } catch (error) {
-                document.getElementById('api-result').innerHTML = 
-                    '<strong>Error:</strong> ' + error.message;
-            }
-        }
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/recorder.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}

@@ -10,9 +10,22 @@ services:
       - APP_USERNAME=user
       - APP_PASSWORD=password
       - SECRET_KEY=your-super-secret-key-change-this-in-production
+      # Set this when serving over HTTPS (which phones require for microphone access).
+      # - SESSION_COOKIE_SECURE=true
+      # Optional seed for a first run; after that the settings screen is the
+      # source of truth. Format: "name=url,name=url".
+      # - PYWHISPR_SERVERS=desktop=192.168.1.10:9149,laptop=192.168.1.22:9149
+    volumes:
+      # Keeps the server list and cached liveness decision across restarts. A
+      # named volume avoids the root-owned bind-mount trap: the container runs as
+      # a non-root user, so a host directory mounted here must be chown'd to it.
+      - pywhispr-data:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+
+volumes:
+  pywhispr-data:

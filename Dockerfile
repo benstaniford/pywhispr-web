@@ -26,15 +26,24 @@ COPY --from=builder /root/.local /usr/local
 
 # Copy application code
 COPY app.py .
+COPY pywhispr_client.py .
 COPY gunicorn.conf.py .
 COPY templates/ templates/
+COPY static/ static/
 
 ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
 
+# The server list and the cached liveness decision live here, shared by every
+# Gunicorn worker. Mount a volume over it to keep configuration across upgrades.
+ENV PYWHISPR_CONFIG_PATH=/data/config.json
+
 # Create a non-root user for security
 RUN adduser --disabled-password --gecos '' appuser && \
-    chown -R appuser:appuser /app
+    mkdir -p /data && \
+    chown -R appuser:appuser /app /data
+
+VOLUME /data
 
 # Switch to non-root user
 USER appuser

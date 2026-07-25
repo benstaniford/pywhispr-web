@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- viewport-fit=cover lets the layout reach under the notch and home
+         indicator; the CSS then pads with env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>{% block title %}PyWhispr Web{% endblock %}</title>
+
+    <!-- Installed to the home screen, this runs with no browser chrome. -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+    <meta name="theme-color" content="#5b4b9c">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PyWhispr">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-512.png') }}">
+    <link rel="icon" href="{{ url_for('static', filename='icons/icon-512.png') }}">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+{% block body %}{% endblock %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

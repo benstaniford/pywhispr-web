@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Settings · PyWhispr Web{% endblock %}
+
+{% block body %}
+<div class="app">
+    <header class="topbar">
+        <a class="icon-btn" href="{{ url_for('index') }}" aria-label="Back to the editor" title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </a>
+        <h1>Settings</h1>
+        <div class="spacer"></div>
+        <a class="icon-btn" href="{{ url_for('logout') }}" aria-label="Log out" title="Log out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path d="M15 17l5-5-5-5M20 12H9M12 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </a>
+    </header>
+
+    <div class="banner" id="banner" role="status" aria-live="polite" hidden></div>
+
+    <div class="scroll-area">
+        <h2 class="section-title">PyWhispr servers</h2>
+        <p class="hint">
+            Tried from the top down. The first one that answers and reports its model
+            ready is used, and the app falls back to the next automatically if it
+            stops responding.
+        </p>
+
+        <div id="server-list"></div>
+
+        <div class="button-row">
+            <button type="button" class="pill-btn" id="add">Add server</button>
+            <button type="button" class="pill-btn" id="test">Test all</button>
+        </div>
+
+        <h2 class="section-title">Availability cache</h2>
+        <p class="hint">
+            How long to reuse the chosen server before checking again. Failures always
+            trigger an immediate re-check, so this only affects how soon a recovered
+            server higher up the list is preferred again.
+        </p>
+        <div class="ttl-row">
+            <input type="number" class="field" id="ttl" min="5" max="3600" step="5" inputmode="numeric"
+                   aria-label="Cache lifetime in seconds">
+            <span class="hint">seconds</span>
+        </div>
+
+        <div class="button-row">
+            <button type="button" class="pill-btn primary" id="save">Save changes</button>
+        </div>
+
+        <p class="version">pywhispr-web {{ version }}</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}

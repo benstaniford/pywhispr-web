@@ -52,7 +52,8 @@ handle_test_result() {
 cleanup_docker() {
     echo -e "${YELLOW}🧹 Cleaning up Docker environment...${NC}"
     docker compose down --remove-orphans 2>/dev/null || true
-    rm -f cookies.txt test-response.html api-response.json app-response.html 2>/dev/null || true
+    rm -f cookies.txt test-response.html api-response.json app-response.html \
+          put-response.json reread-response.json ready-response.json 2>/dev/null || true
 }
 
 # Set cleanup trap
