@@ -56,7 +56,8 @@ runs on the `main` push.
 
 The bundled `scripts/redeploy-portainer.py` calls Portainer's stack-update endpoint
 with `pullImage: true`, which re-pulls `nerwander/pywhispr-web:latest` and recreates
-the container (defaults target `https://moria:9443`, stack `pywhispr-web`).
+the container (defaults target `https://moria:9443`, stack `pywispr-web` — the stack on
+moria is spelled without the `h`, unlike the repo and the image).
 
 Run it with the secrets sourced (use this skill's bundled copy so it works from any repo):
 

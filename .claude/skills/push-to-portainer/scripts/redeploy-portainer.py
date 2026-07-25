@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Pull the latest pywhispr-web image and redeploy its Portainer stack.
 
-The stack (`pywhispr-web` on moria) is a plain compose stack running
+The stack (`pywispr-web` on moria — note the spelling, it has no `h`) is a
+plain compose stack running
 `nerwander/pywhispr-web:latest`. Portainer's stack-update endpoint with
 `pullImage: true` re-pulls the image tag and recreates the container — i.e. a
 "pull latest + restart" in one call.
@@ -9,7 +10,7 @@ The stack (`pywhispr-web` on moria) is a plain compose stack running
 Config comes from the environment (nothing secret is baked into the file):
 
     PORTAINER_URL        default https://moria:9443
-    PORTAINER_STACK      default pywhispr-web            (stack name to redeploy)
+    PORTAINER_STACK      default pywispr-web             (stack name to redeploy)
     PORTAINER_INSECURE   default 1  (moria uses a self-signed cert; set 0 to verify)
 
     # authenticate with EITHER an API token (preferred) ...
@@ -20,7 +21,7 @@ Config comes from the environment (nothing secret is baked into the file):
 
 Usage:
     PORTAINER_PASSWORD=... ./scripts/redeploy-portainer.py
-    PORTAINER_API_KEY=ptr_... ./scripts/redeploy-portainer.py --stack pywhispr-web
+    PORTAINER_API_KEY=ptr_... ./scripts/redeploy-portainer.py --stack pywispr-web
 """
 import argparse
 import json
@@ -52,7 +53,7 @@ def _request(url, ctx, method="GET", token=None, api_key=False, body=None):
 def main():
     ap = argparse.ArgumentParser(description="Redeploy a Portainer compose stack, pulling latest images.")
     ap.add_argument("--url", default=os.environ.get("PORTAINER_URL", "https://moria:9443"))
-    ap.add_argument("--stack", default=os.environ.get("PORTAINER_STACK", "pywhispr-web"),
+    ap.add_argument("--stack", default=os.environ.get("PORTAINER_STACK", "pywispr-web"),
                     help="stack name to redeploy")
     ap.add_argument("--prune", action="store_true", help="remove services no longer in the compose file")
     args = ap.parse_args()
