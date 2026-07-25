@@ -18,7 +18,9 @@ docker-compose up --build -d
 if [ $? -eq 0 ]; then
     echo ""
     echo "🎉 pywhispr-web is now running!"
-    echo "📱 Access the application at: http://localhost:5000"
+    echo "💻 On this machine:  http://localhost:5000"
+    echo "📱 From a phone:     https://localhost:5443  (recording needs HTTPS)"
+    echo "🔐 Trust the certificate first: http://localhost:5000/cert"
     echo ""
     echo "🛑 To stop the application, run: docker-compose down"
     echo "📊 To view logs, run: docker-compose logs -f"

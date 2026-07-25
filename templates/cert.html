@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Certificate · PyWhispr Web{% endblock %}
+
+{% block body %}
+<div class="app">
+    <header class="topbar">
+        <a class="icon-btn" href="{{ url_for('index') }}" aria-label="Back to the editor" title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </a>
+        <h1>Certificate</h1>
+        <div class="spacer"></div>
+    </header>
+
+    <div class="scroll-area">
+        {% if not info %}
+        <div class="banner error">
+            No certificate has been generated.
+            <span class="detail">
+                {% if tls_enabled %}
+                TLS is on, so this should not happen — the container generates its
+                certificates at startup. Check the logs, and that
+                <code>{{ cert_dir }}</code> is writable.
+                {% else %}
+                TLS is switched off (<code>PYWHISPR_TLS=off</code>), so this app is
+                expected to sit behind something else that terminates HTTPS.
+                {% endif %}
+            </span>
+        </div>
+        {% else %}
+
+        <p class="hint">
+            Recording needs a secure context, so the microphone will not work over
+            plain HTTP. This app issues its own certificate — trust it once on each
+            device and you are done.
+        </p>
+
+        {% if not host_covered %}
+        <div class="banner warn">
+            This certificate is not valid for <strong>{{ hostname }}</strong>.
+            <span class="detail">
+                {% if hosts_configured %}
+                Add it to <code>PYWHISPR_TLS_HOSTS</code> and restart the container.
+                {% else %}
+                <code>PYWHISPR_TLS_HOSTS</code> is unset, so only localhost and the
+                container's own hostname are covered. Set
+                <code>PYWHISPR_TLS_HOSTS={{ hostname }}</code> and restart, otherwise
+                the browser will reject HTTPS however well the certificate is trusted.
+                {% endif %}
+            </span>
+        </div>
+        {% endif %}
+
+        <h2 class="section-title">1. Install the certificate</h2>
+        <div class="button-row">
+            <a class="pill-btn primary wide" href="{{ url_for('cert_download') }}">
+                Download the certificate
+            </a>
+        </div>
+        <p class="hint">
+            On an iPhone, open this page in <strong>Safari</strong> — no other browser
+            can install a profile. Tap the button, then <em>Allow</em>.
+        </p>
+
+        <h2 class="section-title">2. Approve the profile</h2>
+        <p class="hint">
+            Settings → General → <strong>VPN &amp; Device Management</strong> →
+            <em>PyWhispr Web CA</em> → <strong>Install</strong>. Enter your passcode
+            and confirm the unsigned-profile warning.
+        </p>
+
+        <h2 class="section-title">3. Turn on full trust</h2>
+        <div class="banner info">
+            This step is not optional.
+            <span class="detail">
+                Settings → General → About → <strong>Certificate Trust Settings</strong>
+                → enable <em>PyWhispr Web CA</em>. Until you do, iOS installs the
+                certificate but still refuses to trust it, Safari keeps warning, and the
+                microphone stays blocked — exactly the problem you are trying to fix.
+            </span>
+        </div>
+
+        <h2 class="section-title">4. Use the HTTPS address</h2>
+        <p class="hint">
+            Go to <strong>{{ https_url }}</strong> and check there is no warning, then
+            add it to your home screen from the share menu. Bookmarking the plain-HTTP
+            address will silently leave you without a microphone.
+        </p>
+
+        <h2 class="section-title">This certificate</h2>
+        <div class="server-card">
+            <p class="hint">Valid for</p>
+            <p>{{ info.hosts | join(', ') }}</p>
+            <p class="hint">Expires {{ info.not_after.strftime('%d %b %Y') }} · renews itself automatically</p>
+            <p class="hint" style="margin-top: 0.7rem">Authority fingerprint (SHA-256)</p>
+            <p style="font-size: 0.7rem; word-break: break-all; -webkit-user-select: all; user-select: all">{{ info.ca_fingerprint }}</p>
+            <p class="hint">
+                Check this matches what iOS shows before you trust it. The authority
+                expires {{ info.ca_not_after.strftime('%b %Y') }}, and survives
+                upgrades — you only do this once.
+            </p>
+        </div>
+
+        <h2 class="section-title">Other devices</h2>
+        <p class="hint">
+            <strong>macOS</strong>: open the downloaded file, then set it to
+            <em>Always Trust</em> in Keychain Access.
+            <strong>Android</strong>: Settings → Security → Encryption &amp;
+            credentials → Install a certificate → CA certificate.
+            <strong>Linux</strong>: copy it into
+            <code>/usr/local/share/ca-certificates/</code> and run
+            <code>update-ca-certificates</code>. Firefox keeps its own store, under
+            Settings → Privacy &amp; Security → View Certificates → Authorities.
+        </p>
+        <p class="hint">
+            To AirDrop it instead, download it on a Mac or iPad and share it from
+            there.
+        </p>
+
+        {% endif %}
+
+        <p class="version">pywhispr-web {{ version }}</p>
+    </div>
+</div>
+{% endblock %}

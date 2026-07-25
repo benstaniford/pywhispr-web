@@ -58,11 +58,34 @@ def check_required():
         failures.append(f"pywhispr_client: {e}")
 
     try:
+        import cryptography
+        print(f"✅ cryptography import successful (version: {cryptography.__version__})")
+    except ImportError as e:
+        print(f"❌ cryptography import failed: {e}")
+        failures.append(f"cryptography: {e}")
+
+    try:
+        import tls_certs  # noqa: F401 - import is the test
+        print("✅ tls_certs import successful")
+    except Exception as e:
+        print(f"❌ tls_certs import failed: {e}")
+        failures.append(f"tls_certs: {e}")
+
+    try:
         import app  # noqa: F401 - import is the test
         print("✅ app import successful")
     except Exception as e:
         print(f"❌ app import failed: {e}")
         failures.append(f"app: {e}")
+
+    # run.py is the container's entry point, so a typo in it only shows up when
+    # the container refuses to start. Import it without running main().
+    try:
+        import run  # noqa: F401 - import is the test
+        print("✅ run import successful")
+    except Exception as e:
+        print(f"❌ run import failed: {e}")
+        failures.append(f"run: {e}")
 
     return failures
 

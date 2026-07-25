@@ -26,6 +26,13 @@ docker-compose logs -f pywhispr-web
 
 # Run the Flask dev server directly (localhost is a secure context, so recording works)
 PYWHISPR_CONFIG_PATH=./config.json python app.py
+
+# Same, but over real TLS — only needed to test the certificates themselves
+PYWHISPR_TLS=on PYWHISPR_CERT_DIR=/tmp/pwcerts PYWHISPR_TLS_HOSTS=192.168.1.61 \
+  PYWHISPR_CONFIG_PATH=./config.json python app.py
+
+# Inspect the generated certificate (SANs, expiry, CA fingerprint)
+PYWHISPR_CERT_DIR=/tmp/pwcerts python -m tls_certs
 ```
 
 ### Testing
@@ -65,9 +72,11 @@ python scripts/fake-pywhispr.py --port 9151 --status loading   # pretend it's wa
 ## Architecture Overview
 
 ```
-phone ──HTTPS──> pywhispr-web (Flask :5000) ──HTTP──> PyWhispr :9149
-                        │
-                        └── /data/config.json  servers, TTL, cached choice
+phone ──HTTPS :5443──┐
+                     ├─> pywhispr-web ──HTTP──> PyWhispr :9149
+health/bootstrap ────┘        │
+    HTTP :5000                ├── /data/config.json  servers, TTL, cached choice
+                              └── /data/certs        CA and server certificate
 ```
 
 ### Core files
@@ -76,6 +85,10 @@ phone ──HTTPS──> pywhispr-web (Flask :5000) ──HTTP──> PyWhispr :
 - **`pywhispr_client.py`** — everything about the upstream: server registry, health
   probing, failover, and the liveness cache. No Flask imports, so it is unit-testable
   without a request context
+- **`tls_certs.py`** — generates and renews the self-signed CA and server certificate.
+  Also no Flask imports
+- **`run.py`** — the container entry point: certificates first, then one Gunicorn master
+  per scheme
 - **`templates/base.html`** — the shared shell carrying the PWA and full-screen metadata.
   Every other template extends it
 - **`static/js/recorder.js`** + **`capture-worklet.js`** — microphone capture
@@ -112,6 +125,42 @@ atomically via temp file + `os.replace()`.
 
 Note the lock is held on a *sibling* `.lock` file, because `os.replace()` swaps the
 config's inode out from under any lock held on the config itself.
+
+### The certificate rules are Apple's, not ours
+
+iOS 13+ rejects a server certificate outright unless it has a `subjectAltName` (the CN
+is ignored entirely, and browsing by IP needs an `iPAddress` entry), an
+`extendedKeyUsage` of `serverAuth`, a SHA-256 signature, and a lifetime of 825 days or
+less. A stock `openssl req -x509` satisfies none of those. That is why `tls_certs.py`
+builds certificates with `cryptography` — the rules are pinned in
+`tests/test_tls_certs.py`, because the symptom of breaking one is an unexplained browser
+warning on a phone, a long way from the code.
+
+Trust is also two steps on iOS, and the second is easy to miss: installing the profile
+is not enough, the user must *also* enable it under Settings → General → About →
+Certificate Trust Settings. `templates/cert.html` says so emphatically. **Do not trim
+that page down** — without step 3 the microphone stays blocked and the feature looks
+broken.
+
+The **CA must be reused, never regenerated**. It lives on the `/data` volume so it
+survives upgrades; regenerating it would mean re-trusting on every device after every
+release. The leaf is the disposable half — reissued on expiry or a host-list change.
+
+### Two Gunicorn masters, and no HTTP-to-HTTPS redirect
+
+TLS in Gunicorn is process-wide, so `run.py` starts the config twice with different
+environment (`PYWHISPR_BIND`, `PYWHISPR_TLS`, `PYWHISPR_WORKERS`): TLS on 5443, plain on
+5000. Certificates are generated in `run.py` and not in `gunicorn.conf.py`, because
+`preload_app` means the config loads too late to create them.
+
+Port 5000 serves the *whole* app in the clear on purpose. It is how a phone fetches the
+CA before HTTPS is trusted, and it is what keeps the Docker `HEALTHCHECK`,
+`test-docker/test-container.sh` and the CI compose heredoc pointing at the URL they
+always have. **Do not add a redirect to HTTPS** — it would break all of those. The
+HTTP-served pages link to `/cert` instead.
+
+`run.py` exits as soon as either master dies, so `restart: unless-stopped` restarts a
+container that would otherwise serve only half its ports.
 
 ### Bodies must have a Content-Length
 
@@ -165,6 +214,8 @@ immediate.
   page. `/api/` routes always answer JSON, since only `fetch()` calls them
 - `/health` must stay unchanged — the Docker `HEALTHCHECK` and
   `test-docker/test-container.sh` both depend on it
+- `/cert` and `/cert/pywhispr-ca.crt` must stay reachable over **plain HTTP**, since they
+  are what a client needs before it will accept HTTPS at all
 
 ### Front-end conventions
 - No build step, no framework, no CDN. Plain ES5-compatible JS in `static/js/`
@@ -179,6 +230,9 @@ immediate.
   `pywhispr_client.CONFIG_PATH` at a `TemporaryDirectory` and patch `requests`
 - `tests/test_transcribe.py` — routes through `app.test_client()`. No session setup is
   needed; `TestOpenAccess` guards against auth creeping back in
+- `tests/test_tls_certs.py` — `tls_certs` in isolation; patch `tls_certs.CERT_DIR` at a
+  `TemporaryDirectory`. Most of it asserts Apple's rules rather than ours
+- `tests/test_cert_routes.py` — the `/cert` page and download headers
 - `tests/test_imports.py` runs both as a script (non-zero exit on failure) and as a
   unittest module. Keep its checks inside functions — a module-level `sys.exit()` aborts
   the whole pytest run during collection
@@ -189,19 +243,36 @@ immediate.
 |----------|---------|-------------|
 | `PYWHISPR_CONFIG_PATH` | `/data/config.json` | Server list and cache location |
 | `PYWHISPR_SERVERS` | unset | First-run seed only, `name=url,name=url` |
+| `PYWHISPR_TLS_HOSTS` | unset | Comma-separated names/addresses the certificate must cover |
+| `PYWHISPR_TLS` | `on` | `off` disables HTTPS, for when a proxy already terminates it |
+| `PYWHISPR_CERT_DIR` | `/data/certs` | Where the generated CA and server certificate live |
 | `APP_VERSION` | `dev` | Shown on the settings screen |
+
+`run.py` also sets `PYWHISPR_BIND` and `PYWHISPR_WORKERS` per child; they are internal.
 
 The server list is owned by the settings screen, not the environment. `PYWHISPR_SERVERS`
 seeds it only when no config file exists.
+
+`PYWHISPR_TLS_HOSTS` has no useful default and is **not** auto-detected: inside a bridge
+network the container only sees a `172.x` address no phone can reach, so guessing would
+produce a certificate that looks fine and fails in use. An unset value is surfaced as a
+warning on `/cert` and in the logs instead.
 
 `/data` must be writable by the non-root container user. The named `pywhispr-data`
 volume handles this; a host bind mount needs `chown -R 1000:1000`.
 
 ## Deployment Notes
 
-- Microphone access **requires HTTPS or localhost**. On a phone this means a
-  TLS-terminating reverse proxy in front of the app; there is no way around it
-- Multi-stage Docker build keeps the image small; no ffmpeg or audio libraries needed
+- Microphone access **requires HTTPS or localhost**; there is no way around it. The
+  container now provides HTTPS itself with a self-signed CA, so a reverse proxy is
+  optional rather than required — set `PYWHISPR_TLS=off` when you use one
+- Both ports must be published, and `PYWHISPR_TLS_HOSTS` must list every name a client
+  will use, or HTTPS warns however well the CA is trusted
+- The live stack's compose lives **in Portainer**, so port and environment changes do not
+  arrive with an image pull — they have to be edited there as well as in the repo
+- Multi-stage Docker build keeps the image small; no ffmpeg or audio libraries needed.
+  `cryptography` ships wheels for both `amd64` and `arm64`, so the multi-arch build needs
+  no Rust toolchain
 - CI (`.github/workflows/`): `build-check.yml` compiles and runs the unit tests on push;
   `docker-build-release.yml` builds, runs the container tests, and pushes multi-arch
   images on a `v*` tag

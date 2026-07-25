@@ -6,17 +6,29 @@ services:
     build: .
     container_name: pywhispr-web
     ports:
+      # 5443 is the one to use from a phone — the microphone needs HTTPS. 5000 is
+      # plain HTTP, for fetching the CA certificate before HTTPS is trusted.
       - "5000:5000"
+      - "5443:5443"
     restart: unless-stopped
     environment:
       - FLASK_ENV=production
+      # Every name or address a client might use to reach this app. The generated
+      # certificate is only valid for what is listed here, so an omission shows up
+      # as a browser warning that no amount of trusting the CA will fix. Prefer a
+      # DNS or .local name over a bare IP, which a new DHCP lease invalidates.
+      - PYWHISPR_TLS_HOSTS=moria,moria.local,192.168.1.10
+      # Set to "off" if something in front of this already terminates TLS.
+      # - PYWHISPR_TLS=off
       # Optional seed for a first run; after that the settings screen is the
       # source of truth. Format: "name=url,name=url".
       # - PYWHISPR_SERVERS=desktop=192.168.1.10:9149,laptop=192.168.1.22:9149
     volumes:
-      # Keeps the server list and cached liveness decision across restarts. A
-      # named volume avoids the root-owned bind-mount trap: the container runs as
-      # a non-root user, so a host directory mounted here must be chown'd to it.
+      # Keeps the server list, cached liveness decision and the self-signed CA
+      # across restarts and upgrades — losing the CA means re-trusting it on every
+      # device. A named volume avoids the root-owned bind-mount trap: the
+      # container runs as a non-root user, so a host directory mounted here must
+      # be chown'd to it.
       - pywhispr-data:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health', timeout=5)"]

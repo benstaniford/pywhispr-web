@@ -53,6 +53,9 @@ jobs:
             image: pywhispr-web:test
             ports:
               - "5000:5000"
+              - "5443:5443"
+            environment:
+              - PYWHISPR_TLS_HOSTS=localhost
             healthcheck:
               test: ["CMD", "python", "-c", "import requests; r=requests.get('http://localhost:5000/health', timeout=5); exit(0 if r.status_code == 200 else 1)"]
               interval: 10s

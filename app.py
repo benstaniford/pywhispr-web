@@ -9,11 +9,12 @@ PyWhispr's unauthenticated API is never exposed to the browser.
 Server selection, failover and the liveness cache all live in pywhispr_client.
 """
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file, abort
 import os
 import logging
 
 import pywhispr_client as pywhispr
+import tls_certs
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,6 +22,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 APP_VERSION = os.environ.get('APP_VERSION', 'dev')
+
+# Only used to tell the user which URL to visit from the /cert page; run.py owns
+# the actual binding.
+HTTPS_PORT = os.environ.get('PYWHISPR_HTTPS_PORT', '5443')
 
 # The app is unauthenticated: it is a personal dictation front end, and anything
 # facing a hostile network is expected to sit behind a reverse proxy.
@@ -156,6 +161,75 @@ def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy'})
 
+
+# -- certificate trust --------------------------------------------------------
+
+
+def _hostname(host: str) -> str:
+    """The host without its port. Handles a bracketed IPv6 literal."""
+    if host.startswith('[') and ']' in host:
+        return host[1:host.index(']')]
+    return host.split(':')[0]
+
+
+def _authority(hostname: str, port: str) -> str:
+    """hostname:port, re-bracketing an IPv6 literal so the URL is usable."""
+    return f'[{hostname}]:{port}' if ':' in hostname else f'{hostname}:{port}'
+
+
+@app.route('/cert')
+def cert():
+    """Instructions for trusting the self-signed CA, and a link to download it.
+
+    Reachable over plain HTTP on purpose: this is the page you need *before* the
+    browser will accept the HTTPS listener, so making it HTTPS-only would be a
+    chicken and egg.
+    """
+    info = tls_certs.certificate_info()
+
+    # The name in the address bar has to be in the certificate, or the browser
+    # rejects it however well the CA is trusted. Warn while we can still say so
+    # over HTTP, rather than leaving the user to decipher a TLS error.
+    hostname = _hostname(request.host)
+    host_covered = bool(info) and hostname in info.hosts
+
+    return render_template(
+        'cert.html',
+        version=APP_VERSION,
+        info=info,
+        hostname=hostname,
+        host_covered=host_covered,
+        tls_enabled=tls_certs.tls_enabled(),
+        cert_dir=tls_certs.CERT_DIR,
+        hosts_configured=bool(os.environ.get('PYWHISPR_TLS_HOSTS')),
+        https_url=f'https://{_authority(hostname, HTTPS_PORT)}',
+    )
+
+
+@app.route('/cert/pywhispr-ca.crt')
+def cert_download():
+    """The CA certificate, served so iOS offers to install it.
+
+    The mimetype and *inline* disposition are both load-bearing on iOS: together
+    they make Safari offer to install a configuration profile. As an attachment
+    it just lands in Files, where it cannot be installed from.
+    """
+    path = tls_certs.ca_pem_path()
+    if path is None:
+        abort(404)
+    return send_file(path, mimetype='application/x-x509-ca-cert',
+                     as_attachment=False, download_name='pywhispr-ca.crt')
+
+
 if __name__ == '__main__':
-    # For development only - use gunicorn in production
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    # For development only - use gunicorn in production.
+    #
+    # TLS here is explicit opt-in, unlike in the container: localhost is already
+    # a secure context, so the dev server does not need it unless you are
+    # deliberately testing the certificates.
+    certs = None
+    if os.environ.get('PYWHISPR_TLS', '').strip().lower() in ('on', '1', 'true', 'yes'):
+        certs = tls_certs.ensure_certificates()
+
+    app.run(host='0.0.0.0', port=5000, debug=False,
+            ssl_context=(certs.cert, certs.key) if certs else None)

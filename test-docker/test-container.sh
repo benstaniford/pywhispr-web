@@ -45,7 +45,7 @@ cleanup() {
     docker compose down --remove-orphans 2>/dev/null || true
     $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
     docker rm -f $CONTAINER_NAME 2>/dev/null || true
-    rm -f test-response.html api-response.json app-response.html 2>/dev/null || true
+    rm -f test-response.html api-response.json app-response.html ca-response.crt 2>/dev/null || true
     echo -e "${GREEN}✅ Cleanup completed${NC}"
 }
 
@@ -253,6 +253,79 @@ else
 fi
 echo ""
 
+# Test 5b: The HTTPS listener and the certificate it generated. This is what a
+# phone actually connects to; without it the microphone cannot work at all.
+echo -e "${BLUE}🔐 Test 5b: Testing the HTTPS listener...${NC}"
+tls_health=$(curl -sk https://localhost:5443/health)
+if echo "$tls_health" | grep -q '"status":"healthy"'; then
+    echo -e "${GREEN}✅ HTTPS listener responding on 5443${NC}"
+else
+    echo -e "${RED}❌ HTTPS listener not responding${NC}"
+    echo "   Response: $tls_health"
+    exit 1
+fi
+
+# The CA has to be fetchable over plain HTTP: it is needed *before* the browser
+# will accept HTTPS, so an HTTPS-only download would be a chicken and egg.
+curl -s http://localhost:5000/cert/pywhispr-ca.crt -o ca-response.crt
+if grep -q 'BEGIN CERTIFICATE' ca-response.crt; then
+    echo -e "${GREEN}✅ CA certificate downloadable over plain HTTP${NC}"
+else
+    echo -e "${RED}❌ CA certificate not served${NC}"
+    rm -f ca-response.crt
+    exit 1
+fi
+
+# iOS installs a profile only for this mimetype; as an attachment it just lands
+# in Files, where it cannot be installed from.
+ca_type=$(curl -s -o /dev/null -w "%{content_type}" http://localhost:5000/cert/pywhispr-ca.crt)
+if echo "$ca_type" | grep -q 'application/x-x509-ca-cert'; then
+    echo -e "${GREEN}✅ CA served as $ca_type${NC}"
+else
+    echo -e "${RED}❌ CA served as '$ca_type', which iOS will not install${NC}"
+    rm -f ca-response.crt
+    exit 1
+fi
+
+# The whole point of publishing the CA is that it validates the live listener.
+# No -k here: this fails if the chain or the SANs are wrong.
+if curl -s --cacert ca-response.crt https://localhost:5443/health | grep -q '"status":"healthy"'; then
+    echo -e "${GREEN}✅ Server certificate validates against the published CA${NC}"
+else
+    echo -e "${RED}❌ Server certificate does not validate against its own CA${NC}"
+    rm -f ca-response.crt
+    exit 1
+fi
+rm -f ca-response.crt
+
+# iOS 13+ rejects a certificate lacking either of these, silently, and the
+# symptom only shows up on a phone.
+leaf=$(echo | openssl s_client -connect localhost:5443 2>/dev/null \
+    | openssl x509 -noout -text 2>/dev/null)
+if echo "$leaf" | grep -q 'TLS Web Server Authentication'; then
+    echo -e "${GREEN}✅ Certificate carries the serverAuth EKU iOS requires${NC}"
+else
+    echo -e "${RED}❌ Certificate is missing the serverAuth EKU${NC}"
+    exit 1
+fi
+if echo "$leaf" | grep -A1 'Subject Alternative Name' | grep -q 'DNS:localhost'; then
+    echo -e "${GREEN}✅ Certificate carries a subjectAltName${NC}"
+else
+    echo -e "${RED}❌ Certificate is missing a subjectAltName${NC}"
+    echo "$leaf" | grep -A1 'Subject Alternative Name' || true
+    exit 1
+fi
+
+# The certificate page is the instructions; a phone with no HTTPS lands here.
+cert_page=$(curl -s http://localhost:5000/cert)
+if echo "$cert_page" | grep -q 'Certificate Trust Settings'; then
+    echo -e "${GREEN}✅ Certificate page served with the trust instructions${NC}"
+else
+    echo -e "${RED}❌ Certificate page missing or incomplete${NC}"
+    exit 1
+fi
+echo ""
+
 # Test 6: Container logs check
 echo -e "${BLUE}📋 Test 6: Checking container logs for errors...${NC}"
 error_count=$($COMPOSE_CMD logs pywhispr-web 2>&1 | grep -i -c "error\|exception\|traceback" || true)
@@ -301,9 +374,11 @@ echo -e "${GREEN}✅ Server configuration API${NC}"
 echo -e "${GREEN}✅ Configuration persistence${NC}"
 echo -e "${GREEN}✅ Static assets${NC}"
 echo -e "${GREEN}✅ Main editor page${NC}"
+echo -e "${GREEN}✅ HTTPS listener and certificate${NC}"
 echo -e "${GREEN}✅ Container logs${NC}"
 echo -e "${GREEN}✅ Performance test${NC}"
 echo ""
 echo -e "${BLUE}🌐 Application is ready at: http://localhost:5000${NC}"
+echo -e "${BLUE}🔐 Over HTTPS (needed for recording): https://localhost:5443${NC}"
 echo ""
 echo -e "${GREEN}✨ Test suite completed successfully! ✨${NC}"

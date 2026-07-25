@@ -22,7 +22,7 @@
 
     /* -- chrome ----------------------------------------------------------- */
 
-    function setBanner(kind, message, detail) {
+    function setBanner(kind, message, detail, link) {
         if (!message) {
             banner.hidden = true;
             return;
@@ -33,6 +33,13 @@
             const span = document.createElement('span');
             span.className = 'detail';
             span.textContent = detail;
+            if (link) {
+                span.appendChild(document.createTextNode(' '));
+                const anchor = document.createElement('a');
+                anchor.href = link.href;
+                anchor.textContent = link.label;
+                span.appendChild(anchor);
+            }
             banner.appendChild(span);
         }
         banner.hidden = false;
@@ -357,7 +364,10 @@
     refreshReadiness();
 
     if (!window.isSecureContext) {
+        // This is the moment the certificate instructions are actually wanted,
+        // so link straight to them rather than describing the problem twice.
         setBanner('warn', 'Microphone access needs HTTPS.',
-                  'Browsers only allow recording on HTTPS or localhost. Recording will fail until this app is served over HTTPS.');
+                  'Browsers only allow recording on HTTPS or localhost, so recording will fail on this address.',
+                  { href: '/cert', label: 'Set up HTTPS' });
     }
 })();

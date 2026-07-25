@@ -47,6 +47,15 @@
             <button type="button" class="pill-btn primary" id="save">Save changes</button>
         </div>
 
+        <h2 class="section-title">HTTPS</h2>
+        <p class="hint">
+            Recording only works over HTTPS. This app issues its own certificate —
+            trust it once per device and the microphone works everywhere.
+        </p>
+        <div class="button-row">
+            <a class="pill-btn" href="{{ url_for('cert') }}">Certificate setup</a>
+        </div>
+
         <p class="version">pywhispr-web {{ version }}</p>
     </div>
 </div>

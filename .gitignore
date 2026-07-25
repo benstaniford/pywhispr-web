@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated TLS material. Certificates are per-deployment and the keys are
+# secret; nothing here should ever be committed.
+certs/
+*.pem
+*.key
+*.crt

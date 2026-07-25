@@ -55,16 +55,68 @@ Browsers only grant microphone access in a *secure context*: HTTPS, or `localhos
 Over plain HTTP from another device the record button will fail no matter what
 permissions you grant, and the app will tell you so.
 
-On a phone you therefore need either:
+So the container serves HTTPS itself. On first start it generates its own certificate
+authority and server certificate into the data volume, and listens on **two** ports:
 
-- **A reverse proxy with TLS** in front of this app (Caddy, nginx, Traefik, Cloudflare
-  Tunnel).
-- **Or a port forward to localhost** for testing, e.g. `ssh -L 5000:localhost:5000 host`,
-  which the browser treats as secure.
+| Port | Scheme | For |
+|------|--------|-----|
+| 5443 | HTTPS | Everything. This is the address to use from a phone |
+| 5000 | HTTP | Fetching the certificate before HTTPS is trusted, and the health check |
 
-This is also why the app proxies audio rather than having the browser call PyWhispr
-directly: an HTTPS page is not allowed to fetch a plain-HTTP address, which every
-PyWhispr server is.
+Set `PYWHISPR_TLS_HOSTS` to every name or address a client will use to reach the app.
+The certificate is only valid for what is listed there:
+
+```yaml
+environment:
+  - PYWHISPR_TLS_HOSTS=moria,moria.local,192.168.1.10
+```
+
+Prefer a DNS or `.local` name over a bare IP — a new DHCP lease invalidates an IP.
+
+### Trusting the certificate on an iPhone
+
+Open **`http://<host>:5000/cert`** in Safari. That page carries these steps and the
+fingerprint to check against.
+
+1. **Download** the certificate — in Safari, not Chrome; only Safari can install a
+   profile.
+2. **Install** it: Settings → General → **VPN & Device Management** → *PyWhispr Web CA*
+   → Install. Enter your passcode and accept the unsigned-profile warning.
+3. **Enable full trust** — Settings → General → About → **Certificate Trust Settings** →
+   turn on *PyWhispr Web CA*.
+4. Go to **`https://<host>:5443`**, confirm there is no warning, and add it to your home
+   screen.
+
+**Step 3 is not optional.** iOS installs a certificate without trusting it, so skipping
+it leaves Safari warning and the microphone blocked — exactly the symptom you are trying
+to fix. And bookmark the HTTPS address: adding the plain-HTTP one to your home screen
+gives you an app that can never record.
+
+The authority is valid for ten years and lives on the `pywhispr-data` volume, so it
+survives upgrades and redeploys — each device only ever does this once. The server
+certificate is short-lived and reissues itself automatically, including when you change
+`PYWHISPR_TLS_HOSTS`. Every client needs the certificate, not just the phone: a laptop
+will warn until it trusts it too.
+
+On **macOS** open the downloaded file and set it to *Always Trust* in Keychain Access;
+on **Android** it is Settings → Security → Encryption & credentials → Install a
+certificate; on **Linux** copy it into `/usr/local/share/ca-certificates/` and run
+`update-ca-certificates`. To AirDrop it, download it on a Mac or iPad and share from
+there.
+
+### Using your own certificate instead
+
+If something in front of this app already terminates TLS — Caddy, nginx, Traefik, a
+Cloudflare Tunnel, or a Tailscale/Let's Encrypt certificate you manage yourself — set
+`PYWHISPR_TLS=off`. The container then serves plain HTTP on 5000 only, and `/cert`
+becomes a 404.
+
+For quick local testing, a port forward also counts as secure:
+`ssh -L 5000:localhost:5000 host`.
+
+Note that none of this changes why the app proxies audio rather than having the browser
+call PyWhispr directly: an HTTPS page is not allowed to fetch a plain-HTTP address,
+which every PyWhispr server is.
 
 ### Local Development
 
@@ -82,6 +134,9 @@ PYWHISPR_CONFIG_PATH=./config.json python app.py
 |----------|---------|-------------|
 | `PYWHISPR_CONFIG_PATH` | `/data/config.json` | Where the server list and cache are stored |
 | `PYWHISPR_SERVERS` | unset | Optional first-run seed, `name=url,name=url` |
+| `PYWHISPR_TLS_HOSTS` | unset | Comma-separated names and addresses the certificate must cover |
+| `PYWHISPR_TLS` | `on` | `off` disables HTTPS, for when a proxy already terminates it |
+| `PYWHISPR_CERT_DIR` | `/data/certs` | Where the generated CA and server certificate live |
 | `APP_VERSION` | `dev` | Shown on the settings screen |
 
 The server list is edited in the app, not in the environment. `PYWHISPR_SERVERS` only
@@ -94,9 +149,11 @@ environment:
 
 ### Persistence
 
-The server list and the cached liveness decision live in `/data/config.json`, kept in
-the `pywhispr-data` volume. The container runs as a non-root user, so if you replace
-the named volume with a host directory you must make it writable by that user:
+The server list and the cached liveness decision live in `/data/config.json`, and the
+generated certificates in `/data/certs`, both kept in the `pywhispr-data` volume.
+Deleting that volume means every device has to trust a new certificate authority, so it
+is worth keeping. The container runs as a non-root user, so if you replace the named
+volume with a host directory you must make it writable by that user:
 
 ```bash
 sudo chown -R 1000:1000 ./data
@@ -163,16 +220,22 @@ python scripts/fake-pywhispr.py --port 9151 --status loading
 ## 🏗️ Architecture
 
 ```
-phone ──HTTPS──> pywhispr-web (Flask :5000) ──HTTP──> PyWhispr :9149
-                        │
-                        └── /data/config.json  servers, TTL, cached choice
+phone ──HTTPS :5443──┐
+                     ├─> pywhispr-web ──HTTP──> PyWhispr :9149
+health/bootstrap ────┘        │
+    HTTP :5000                ├── /data/config.json  servers, TTL, cached choice
+                              └── /data/certs        CA and server certificate
 ```
 
 - **`app.py`** — routes and the transcription proxy
 - **`pywhispr_client.py`** — the server registry, health probing, failover and the
   liveness cache. No Flask imports, so it is testable on its own
+- **`tls_certs.py`** — generates and renews the self-signed CA and server certificate.
+  Also no Flask imports
+- **`run.py`** — generates the certificates, then starts one Gunicorn master per scheme.
+  Gunicorn applies TLS process-wide, so serving both takes two of them
 - **`static/js/recorder.js`** — microphone capture via Web Audio
-- **`templates/`** — a `base.html` shell plus the editor and settings screens
+- **`templates/`** — a `base.html` shell plus the editor, settings and certificate screens
 
 ### Why Web Audio and not MediaRecorder
 
@@ -193,6 +256,8 @@ twelfth of raw 48 kHz float32.
 | `GET /api/servers/status` | Live probe of every server |
 | `GET /api/ready` | Whether we can transcribe, and the recording limits |
 | `POST /api/transcribe` | Relay audio to PyWhispr, with failover |
+| `GET /cert` | Certificate download and trust instructions |
+| `GET /cert/pywhispr-ca.crt` | The CA certificate to trust |
 | `GET /health` | Container health check |
 
 ## 📁 Project Structure
@@ -200,6 +265,8 @@ twelfth of raw 48 kHz float32.
 ```
 ├── app.py                 # Routes, transcription proxy
 ├── pywhispr_client.py     # Server registry, probing, failover, cache
+├── tls_certs.py           # Self-signed CA and server certificate generation
+├── run.py                 # Entry point: certificates, then one server per scheme
 ├── requirements.txt       # Python dependencies
 ├── Dockerfile             # Multi-stage Docker build
 ├── docker-compose.yml     # Development compose file
@@ -207,7 +274,8 @@ twelfth of raw 48 kHz float32.
 ├── templates/
 │   ├── base.html          # Shared shell (PWA metadata, full-screen setup)
 │   ├── index.html         # The editor
-│   └── settings.html      # Server configuration
+│   ├── settings.html      # Server configuration
+│   └── cert.html          # Certificate download and trust instructions
 ├── static/
 │   ├── css/app.css
 │   ├── js/recorder.js     # Web Audio capture
@@ -232,10 +300,12 @@ can legitimately block for minutes if it queues behind a dictation on the host m
 
 ## 🚀 Deployment
 
-1. Put a TLS-terminating reverse proxy in front (required for microphone access)
+1. Publish both ports, `5000` and `5443`, and set `PYWHISPR_TLS_HOSTS` to the names
+   clients will use — or set `PYWHISPR_TLS=off` if a reverse proxy already terminates TLS
 2. Keep this app and your PyWhispr servers on a trusted network, or behind
-   authentication your proxy provides
-3. Point `PYWHISPR_CONFIG_PATH` at a persistent volume
+   authentication a proxy provides
+3. Point `PYWHISPR_CONFIG_PATH` and `PYWHISPR_CERT_DIR` at a persistent volume — losing
+   the certificate directory means re-trusting the app on every device
 
 ## 🔒 Security notes
 
@@ -252,7 +322,9 @@ can legitimately block for minutes if it queues behind a dictation on the host m
 | Symptom | Cause |
 |---------|-------|
 | Record button disabled, "No server" | No server configured, or none reachable — check **Test all** in settings |
-| "Microphone access needs HTTPS" | Serve the app over HTTPS or via `localhost` |
+| "Microphone access needs HTTPS" | You are on the plain-HTTP port. Use `https://<host>:5443` — see [Trusting the certificate](#trusting-the-certificate-on-an-iphone) |
+| Safari still warns after installing the certificate | Full trust was not enabled: Settings → General → About → Certificate Trust Settings |
+| "This certificate is not valid for &lt;host&gt;" | The name you are browsing by is not in `PYWHISPR_TLS_HOSTS`; add it and restart |
 | "The server is still loading its model" | PyWhispr is warming up; first run may download the model |
 | "The server is busy" | PyWhispr is at its concurrency limit; try again shortly |
 | Settings will not save | The `/data` volume is not writable by the container user |

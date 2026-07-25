@@ -183,6 +183,7 @@ body {
 .banner.error { background: rgba(224, 82, 95, 0.16); border-color: var(--bad); }
 .banner.ok { background: rgba(79, 199, 138, 0.14); border-color: var(--ok); }
 .banner .detail { display: block; margin-top: 0.35rem; color: var(--text-dim); font-size: 0.78rem; }
+.banner a { color: var(--accent-strong); }
 
 /* -- bottom controls ------------------------------------------------------- */
 
@@ -211,6 +212,16 @@ body {
 .pill-btn:active { background: var(--border); }
 .pill-btn:disabled { opacity: 0.4; cursor: default; }
 .pill-btn.wide { width: 100%; }
+
+/* The certificate download is a real link, not a button, so it has to be talked
+   back into looking like one. */
+a.pill-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    text-align: center;
+}
 
 /* -- record button --------------------------------------------------------- */
 
