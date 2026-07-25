@@ -222,6 +222,11 @@ immediate.
 - Full-screen phone layout depends on: `100dvh` (not `vh`), `viewport-fit=cover`,
   `env(safe-area-inset-*)`, and `min-height: 0` on flex children that scroll
 - Inputs must be at least 16px or iOS Safari zooms the page on focus
+- The microphone stream and the `AudioContext` are acquired once and held for the life of
+  the page: stopping the tracks between clips makes the next `getUserMedia` a fresh
+  request, which is a permission prompt before *every* recording on a phone. Between
+  clips the tracks are disabled and the context suspended; they are only really released
+  on `pagehide`. **Do not put `track.stop()` back into the per-clip teardown**
 - New static files need a matching `COPY` in the Dockerfile — it copies specific paths,
   not the whole tree, so a new directory silently would not ship
 

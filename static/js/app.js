@@ -339,11 +339,9 @@
     }
 
     function clearText() {
-        if (!editor.value || window.confirm('Clear the editor?')) {
-            editor.value = '';
-            saveDraft();
-            editor.focus();
-        }
+        editor.value = '';
+        saveDraft();
+        editor.focus();
     }
 
     /* -- wiring ------------------------------------------------------------ */
@@ -358,6 +356,10 @@
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden && !Recorder.isRecording() && !busy) { refreshReadiness(); }
     });
+
+    // We hold the microphone open between clips to avoid a permission prompt
+    // each time, so give it back when the page itself goes away.
+    window.addEventListener('pagehide', function () { Recorder.release(); });
 
     setState('idle');
     restoreDraft();

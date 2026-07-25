@@ -17,10 +17,12 @@ window.Recorder = (function () {
     let context = null;
     let source = null;
     let node = null;
+    let mute = null;
     let chunks = [];
     let frames = 0;
     let recording = false;
     let onLevel = null;
+    let workletLoaded = false;
 
     /** getUserMedia only exists in a secure context: HTTPS, or localhost. */
     function isSupported() {
@@ -45,7 +47,12 @@ window.Recorder = (function () {
     async function createCaptureNode() {
         if (context.audioWorklet) {
             try {
-                await context.audioWorklet.addModule('/static/js/capture-worklet.js');
+                // Once per context: the context now outlives a single clip, and
+                // re-registering the same processor name would throw.
+                if (!workletLoaded) {
+                    await context.audioWorklet.addModule('/static/js/capture-worklet.js');
+                    workletLoaded = true;
+                }
                 const worklet = new AudioWorkletNode(context, 'capture-processor');
                 worklet.port.onmessage = handleChunk;
                 return worklet;
@@ -64,12 +71,19 @@ window.Recorder = (function () {
         return processor;
     }
 
-    async function start(levelCallback) {
-        if (recording) { return; }
-        onLevel = levelCallback || null;
-        chunks = [];
-        frames = 0;
+    function streamIsLive() {
+        return Boolean(stream) && stream.getTracks().some(function (t) { return t.readyState === 'live'; });
+    }
 
+    /* Ask for the microphone once per page load and hold onto it. Stopping the
+     * tracks between clips makes the browser treat the next getUserMedia as a
+     * fresh request, which is a permission prompt every single time on a phone.
+     * We mute the tracks instead while idle, and only really let go on unload. */
+    async function acquireStream() {
+        if (streamIsLive()) {
+            stream.getTracks().forEach(function (t) { t.enabled = true; });
+            return;
+        }
         stream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 channelCount: 1,
@@ -78,13 +92,29 @@ window.Recorder = (function () {
                 autoGainControl: true,
             },
         });
+    }
 
+    async function acquireContext() {
         // Don't request a sampleRate here: iOS ignores it and reports whatever
         // the hardware gives, so we resample at the end instead.
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        context = new AudioContextClass();
-        // Safari starts contexts suspended until a user gesture unlocks them.
+        if (!context || context.state === 'closed') {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            context = new AudioContextClass();
+            workletLoaded = false;
+        }
+        // Safari starts contexts suspended until a user gesture unlocks them,
+        // and we suspend it ourselves between clips.
         if (context.state === 'suspended') { await context.resume(); }
+    }
+
+    async function start(levelCallback) {
+        if (recording) { return; }
+        onLevel = levelCallback || null;
+        chunks = [];
+        frames = 0;
+
+        await acquireStream();
+        await acquireContext();
 
         source = context.createMediaStreamSource(stream);
         node = await createCaptureNode();
@@ -92,7 +122,7 @@ window.Recorder = (function () {
 
         // ScriptProcessorNode only fires while connected to a destination. A
         // zero gain keeps it pumping without echoing the mic to the speakers.
-        const mute = context.createGain();
+        mute = context.createGain();
         mute.gain.value = 0;
         node.connect(mute);
         mute.connect(context.destination);
@@ -100,14 +130,24 @@ window.Recorder = (function () {
         recording = true;
     }
 
+    /* Tear the graph down and mute the mic, but keep the stream and the context
+     * so the next clip needs no permission prompt and no worklet reload. */
     function releaseHardware() {
-        // Release the mic promptly — phones show a recording indicator and the
-        // user should see it stop the moment they tap stop.
         if (node) { try { node.disconnect(); } catch (e) { /* already gone */ } }
         if (source) { try { source.disconnect(); } catch (e) { /* already gone */ } }
+        if (mute) { try { mute.disconnect(); } catch (e) { /* already gone */ } }
+        if (stream) { stream.getTracks().forEach(function (t) { t.enabled = false; }); }
+        if (context && context.state === 'running') { context.suspend(); }
+        node = source = mute = null;
+    }
+
+    /** Hand the microphone back for good — for page unload. */
+    function release() {
+        releaseHardware();
         if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); }
-        if (context) { context.close(); }
-        node = source = stream = null;
+        if (context && context.state !== 'closed') { context.close(); }
+        stream = context = null;
+        workletLoaded = false;
     }
 
     function concatenate(buffers, total) {
@@ -177,8 +217,8 @@ window.Recorder = (function () {
         const sourceRate = context.sampleRate;
         const collected = concatenate(chunks, frames);
         chunks = [];
+        frames = 0;
         releaseHardware();
-        context = null;
 
         if (collected.length === 0) { return null; }
 
@@ -196,8 +236,8 @@ window.Recorder = (function () {
         recording = false;
         onLevel = null;
         chunks = [];
+        frames = 0;
         releaseHardware();
-        context = null;
     }
 
     return {
@@ -207,6 +247,7 @@ window.Recorder = (function () {
         start: start,
         stop: stop,
         cancel: cancel,
+        release: release,
         targetSampleRate: TARGET_SAMPLE_RATE,
     };
 })();
