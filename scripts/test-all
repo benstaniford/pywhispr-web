@@ -161,13 +161,11 @@ if [ $TOTAL_ERRORS -eq 0 ]; then
     echo -e "   • Container health and startup"
     echo -e "   • Web interface functionality"
     echo -e "   • API endpoint validation"
-    echo -e "   • Authentication system"
     echo -e "   • Performance benchmarks"
     echo ""
     echo -e "${BLUE}🚀 Next steps:${NC}"
     echo -e "   • Deploy with: docker compose up -d"
     echo -e "   • Access at: http://localhost:5000"
-    echo -e "   • Login with: user / password"
     echo ""
     exit 0
 else

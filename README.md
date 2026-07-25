@@ -16,7 +16,7 @@ of your PyWhispr machines is currently switched on, and puts the text on screen.
 - **Multiple servers with automatic failover**: list your desktop, your laptop, whatever else runs PyWhispr, and the app uses the first one that answers
 - **Cached availability**: the choice of server is cached so the app stays responsive, and re-checked when it goes stale or when a request fails
 - **Installs like an app**: add it to your home screen and it runs full screen with no browser chrome
-- **Session-based authentication**: the PyWhispr API has no auth of its own, so this app keeps it off the open network
+- **No sign-in**: open it and dictate — see the security notes for what that means for where you expose it
 
 ## 🚀 Quick Start
 
@@ -41,7 +41,7 @@ of your PyWhispr machines is currently switched on, and puts the text on screen.
    ```
 
 3. **Add a server**
-   - Open `http://localhost:5000` and log in with `user` / `password`
+   - Open `http://localhost:5000`
    - Tap the cog, then **Add server**, and enter the address of a machine running
      PyWhispr — `192.168.1.10` is enough, the scheme and port `9149` are assumed
    - Tap **Save changes**. **Test all** shows what each server reports
@@ -58,7 +58,7 @@ permissions you grant, and the app will tell you so.
 On a phone you therefore need either:
 
 - **A reverse proxy with TLS** in front of this app (Caddy, nginx, Traefik, Cloudflare
-  Tunnel). Set `SESSION_COOKIE_SECURE=true` as well when you do.
+  Tunnel).
 - **Or a port forward to localhost** for testing, e.g. `ssh -L 5000:localhost:5000 host`,
   which the browser treats as secure.
 
@@ -80,10 +80,6 @@ PYWHISPR_CONFIG_PATH=./config.json python app.py
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_USERNAME` | `user` | Authentication username |
-| `APP_PASSWORD` | `password` | Authentication password |
-| `SECRET_KEY` | `your-secret-key-change-this-in-production` | Flask session secret |
-| `SESSION_COOKIE_SECURE` | unset | Set to `true` when serving over HTTPS |
 | `PYWHISPR_CONFIG_PATH` | `/data/config.json` | Where the server list and cache are stored |
 | `PYWHISPR_SERVERS` | unset | Optional first-run seed, `name=url,name=url` |
 | `APP_VERSION` | `dev` | Shown on the settings screen |
@@ -172,11 +168,11 @@ phone ──HTTPS──> pywhispr-web (Flask :5000) ──HTTP──> PyWhispr :
                         └── /data/config.json  servers, TTL, cached choice
 ```
 
-- **`app.py`** — routes, authentication, and the transcription proxy
+- **`app.py`** — routes and the transcription proxy
 - **`pywhispr_client.py`** — the server registry, health probing, failover and the
   liveness cache. No Flask imports, so it is testable on its own
 - **`static/js/recorder.js`** — microphone capture via Web Audio
-- **`templates/`** — a `base.html` shell plus the editor, settings and login screens
+- **`templates/`** — a `base.html` shell plus the editor and settings screens
 
 ### Why Web Audio and not MediaRecorder
 
@@ -190,20 +186,19 @@ twelfth of raw 48 kHz float32.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /` | The editor (requires authentication) |
+| `GET /` | The editor |
 | `GET /settings` | Server configuration |
-| `GET /login`, `POST /login`, `GET /logout` | Authentication |
 | `GET /api/servers` | Configured servers, in priority order |
 | `PUT /api/servers` | Replace the server list and cache lifetime |
 | `GET /api/servers/status` | Live probe of every server |
 | `GET /api/ready` | Whether we can transcribe, and the recording limits |
 | `POST /api/transcribe` | Relay audio to PyWhispr, with failover |
-| `GET /health` | Container health check (unauthenticated) |
+| `GET /health` | Container health check |
 
 ## 📁 Project Structure
 
 ```
-├── app.py                 # Routes, auth, transcription proxy
+├── app.py                 # Routes, transcription proxy
 ├── pywhispr_client.py     # Server registry, probing, failover, cache
 ├── requirements.txt       # Python dependencies
 ├── Dockerfile             # Multi-stage Docker build
@@ -212,8 +207,7 @@ twelfth of raw 48 kHz float32.
 ├── templates/
 │   ├── base.html          # Shared shell (PWA metadata, full-screen setup)
 │   ├── index.html         # The editor
-│   ├── settings.html      # Server configuration
-│   └── login.html         # Login page
+│   └── settings.html      # Server configuration
 ├── static/
 │   ├── css/app.css
 │   ├── js/recorder.js     # Web Audio capture
@@ -238,26 +232,20 @@ can legitimately block for minutes if it queues behind a dictation on the host m
 
 ## 🚀 Deployment
 
-1. Set secure environment variables
-2. Put a TLS-terminating reverse proxy in front (required for microphone access)
-3. Set `SESSION_COOKIE_SECURE=true`
-4. Keep your PyWhispr servers on a trusted network
-
-```bash
-export APP_USERNAME="your-secure-username"
-export APP_PASSWORD="your-secure-password"
-export SECRET_KEY="your-very-long-random-secret-key"
-export SESSION_COOKIE_SECURE="true"
-```
+1. Put a TLS-terminating reverse proxy in front (required for microphone access)
+2. Keep this app and your PyWhispr servers on a trusted network, or behind
+   authentication your proxy provides
+3. Point `PYWHISPR_CONFIG_PATH` at a persistent volume
 
 ## 🔒 Security notes
 
-- PyWhispr's own API has **no authentication and no TLS** — anyone who can reach port
-  9149 can spend its CPU. Keep it on a trusted network and let this app be the only
-  thing exposed
-- All routes except `/health` and `/login` require a session
+- **This app has no authentication.** Anyone who can reach it can dictate through your
+  PyWhispr servers and edit the server list. Expose it on a trusted network only, or put
+  authentication in the reverse proxy you need for HTTPS anyway
+- PyWhispr's own API has **no authentication and no TLS** either — anyone who can reach
+  port 9149 can spend its CPU. Keep it on a trusted network and let this app be the only
+  thing in front of it
 - The container runs as a non-root user
-- Change the default credentials and `SECRET_KEY` before exposing this anywhere
 
 ## 🆘 Troubleshooting
 

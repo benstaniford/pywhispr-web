@@ -125,7 +125,6 @@
         setStatus('checking', 'Checking…');
         try {
             const response = await fetch('/api/ready');
-            if (response.status === 401) { window.location = '/login?next=/'; return; }
             const data = await response.json();
 
             if (data.ready) {
@@ -235,8 +234,6 @@
             setBanner('error', 'Upload failed.', String(err.message || err));
             return;
         }
-
-        if (response.status === 401) { window.location = '/login?next=/'; return; }
 
         let data = {};
         try { data = await response.json(); } catch (e) { /* handled below */ }

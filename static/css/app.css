@@ -401,44 +401,6 @@ body[data-state="transcribing"] #record { background: var(--accent); box-shadow:
 
 .ttl-row .field { margin-top: 0; width: 6.5em; }
 
-/* -- login ----------------------------------------------------------------- */
-
-.login-body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    min-height: 100dvh;
-    padding: calc(1rem + var(--safe-top)) 1rem calc(1rem + var(--safe-bottom));
-    background: linear-gradient(140deg, #2b2450 0%, #4a3d85 100%);
-}
-
-.login-card {
-    width: 100%;
-    max-width: 360px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 1.75rem 1.4rem;
-    text-align: center;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-}
-
-.login-card img { width: 64px; height: 64px; margin-bottom: 0.6rem; }
-.login-card h1 { margin: 0 0 0.3rem; font-size: 1.25rem; }
-.login-card p.sub { margin: 0 0 1.2rem; color: var(--text-dim); font-size: 0.85rem; }
-.login-card .field { text-align: left; margin-bottom: 0.7rem; }
-.login-card .pill-btn { width: 100%; margin-top: 0.3rem; }
-
-.error-message {
-    padding: 0.6rem 0.8rem;
-    margin-bottom: 0.9rem;
-    border-radius: 10px;
-    background: rgba(224, 82, 95, 0.16);
-    border: 1px solid var(--bad);
-    font-size: 0.85rem;
-}
-
 .version {
     margin-top: 1rem;
     font-size: 0.7rem;

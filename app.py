@@ -9,11 +9,9 @@ PyWhispr's unauthenticated API is never exposed to the browser.
 Server selection, failover and the liveness cache all live in pywhispr_client.
 """
 
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from flask import Flask, render_template, jsonify, request
 import os
 import logging
-from datetime import timedelta
-from functools import wraps
 
 import pywhispr_client as pywhispr
 
@@ -24,20 +22,9 @@ app = Flask(__name__)
 
 APP_VERSION = os.environ.get('APP_VERSION', 'dev')
 
-# Get authentication credentials from environment variables
-USERNAME = os.environ.get('APP_USERNAME', 'user')
-PASSWORD = os.environ.get('APP_PASSWORD', 'password')
-app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
-
-# Sessions last a month and survive the browser being killed: re-typing a
-# password to dictate one sentence on a phone is not acceptable.
+# The app is unauthenticated: it is a personal dictation front end, and anything
+# facing a hostile network is expected to sit behind a reverse proxy.
 app.config.update(
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Lax',
-    # Off by default so plain-HTTP use on a home LAN still works; turn it on
-    # when serving over HTTPS.
-    SESSION_COOKIE_SECURE=os.environ.get('SESSION_COOKIE_SECURE', '').lower() in ('1', 'true', 'yes'),
-    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     # Reject oversized uploads before reading them. Sized off PyWhispr's own
     # cap, with headroom for the query string and framing.
     MAX_CONTENT_LENGTH=pywhispr.FALLBACK_MAX_UPLOAD_BYTES + (1 << 20),
@@ -45,67 +32,14 @@ app.config.update(
 
 logger.info(f"pywhispr-web v{APP_VERSION} initialized")
 
-def login_required(f):
-    """Decorator to require authentication for routes"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('authenticated'):
-            if _wants_json():
-                return jsonify({'error': {'code': 'unauthenticated',
-                                          'message': 'Your session has expired. Please log in again.'}}), 401
-            return redirect(url_for('login', next=request.full_path.rstrip('?')))
-        return f(*args, **kwargs)
-    return decorated_function
-
-
-def _wants_json():
-    """True for our own fetch() calls, so they get a 401 rather than a redirect.
-
-    A redirect to the login page would otherwise arrive at the JS as an opaque
-    HTML success, which is impossible to report usefully.
-    """
-    return request.path.startswith('/api/')
-
-
-def _safe_next(target):
-    """Only allow redirects to a path on this app, never to another origin."""
-    if not target or not target.startswith('/') or target.startswith('//'):
-        return None
-    return target
-
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    """Login page"""
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-
-        if username == USERNAME and password == PASSWORD:
-            session['authenticated'] = True
-            session.permanent = True
-            next_page = _safe_next(request.args.get('next') or request.form.get('next'))
-            return redirect(next_page) if next_page else redirect(url_for('index'))
-        else:
-            return render_template('login.html', error='Invalid username or password')
-
-    return render_template('login.html', next=_safe_next(request.args.get('next')) or '')
-
-@app.route('/logout')
-def logout():
-    """Logout and clear session"""
-    session.pop('authenticated', None)
-    return redirect(url_for('login'))
 
 @app.route('/')
-@login_required
 def index():
     """The dictation editor"""
     return render_template('index.html', version=APP_VERSION)
 
 
 @app.route('/settings')
-@login_required
 def settings():
     """Server configuration screen"""
     return render_template('settings.html', version=APP_VERSION)
@@ -115,7 +49,6 @@ def settings():
 
 
 @app.route('/api/servers', methods=['GET'])
-@login_required
 def get_servers():
     """The configured servers, in failover priority order."""
     config = pywhispr.load_config()
@@ -127,7 +60,6 @@ def get_servers():
 
 
 @app.route('/api/servers', methods=['PUT'])
-@login_required
 def put_servers():
     """Replace the whole server list and TTL.
 
@@ -156,7 +88,6 @@ def put_servers():
 
 
 @app.route('/api/servers/status')
-@login_required
 def servers_status():
     """Live probe of every configured server, for the settings screen."""
     config = pywhispr.load_config()
@@ -165,7 +96,6 @@ def servers_status():
 
 
 @app.route('/api/ready')
-@login_required
 def ready():
     """Whether we can transcribe right now, and the limits to record within."""
     try:
@@ -187,7 +117,6 @@ def ready():
 
 
 @app.route('/api/transcribe', methods=['POST'])
-@login_required
 def transcribe():
     """Relay recorded audio to the live PyWhispr server and return its text."""
     body = request.get_data()

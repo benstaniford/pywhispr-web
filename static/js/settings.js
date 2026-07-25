@@ -147,10 +147,6 @@
 
     async function request(url, options) {
         const response = await fetch(url, options);
-        if (response.status === 401) {
-            window.location = '/login?next=/settings';
-            throw new Error('not authenticated');
-        }
         let data = {};
         try { data = await response.json(); } catch (e) { /* handled by caller */ }
         if (!response.ok) {

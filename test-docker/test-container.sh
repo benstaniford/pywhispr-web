@@ -19,8 +19,6 @@ NC='\033[0m' # No Color
 # Test configuration
 CONTAINER_NAME="pywhispr-web-test"
 TEST_PORT="5001"
-TEST_USERNAME="testuser"
-TEST_PASSWORD="testpass"
 TIMEOUT=30
 
 # Determine which compose file to use
@@ -47,7 +45,7 @@ cleanup() {
     docker compose down --remove-orphans 2>/dev/null || true
     $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
     docker rm -f $CONTAINER_NAME 2>/dev/null || true
-    rm -f cookies.txt test-response.html api-response.json app-response.html 2>/dev/null || true
+    rm -f test-response.html api-response.json app-response.html 2>/dev/null || true
     echo -e "${GREEN}✅ Cleanup completed${NC}"
 }
 
@@ -126,38 +124,9 @@ else
 fi
 echo ""
 
-# Test 4: Login page
-echo -e "${BLUE}🔐 Test 4: Testing login page...${NC}"
-login_response=$(curl -s -w "%{http_code}" http://localhost:5000/ -o test-response.html)
-if [ "$login_response" = "200" ] || [ "$login_response" = "302" ]; then
-    echo -e "${GREEN}✅ Login page accessible (HTTP $login_response)${NC}"
-else
-    echo -e "${RED}❌ Login page failed (HTTP $login_response)${NC}"
-    exit 1
-fi
-echo ""
-
-# Test 5: Authentication
-echo -e "${BLUE}🔑 Test 5: Testing authentication...${NC}"
-auth_response=$(curl -s -w "%{http_code}" \
-    -X POST \
-    -d "username=user&password=password" \
-    -c cookies.txt \
-    http://localhost:5000/login \
-    -o /dev/null)
-
-if [ "$auth_response" = "302" ]; then
-    echo -e "${GREEN}✅ Authentication successful (HTTP $auth_response)${NC}"
-else
-    echo -e "${RED}❌ Authentication failed (HTTP $auth_response)${NC}"
-    exit 1
-fi
-echo ""
-
-# Test 6: Server configuration API
+# Test 4: Server configuration API
 echo -e "${BLUE}🔗 Test 6: Testing server configuration API...${NC}"
 api_response=$(curl -s -w "%{http_code}" \
-    -b cookies.txt \
     http://localhost:5000/api/servers \
     -o api-response.json)
 
@@ -176,11 +145,10 @@ else
 fi
 echo ""
 
-# Test 6b: The config volume must be writable by the non-root container user,
+# Test 4b: The config volume must be writable by the non-root container user,
 # otherwise saving servers fails only once a real user tries it.
-echo -e "${BLUE}💾 Test 6b: Testing server configuration is writable...${NC}"
+echo -e "${BLUE}💾 Test 4b: Testing server configuration is writable...${NC}"
 put_response=$(curl -s -w "%{http_code}" \
-    -b cookies.txt \
     -X PUT \
     -H "Content-Type: application/json" \
     -d '{"servers":[{"name":"container-test","url":"127.0.0.1:9149"}],"cache_ttl_seconds":90}' \
@@ -191,7 +159,7 @@ if [ "$put_response" = "200" ] && grep -q 'http://127.0.0.1:9149' put-response.j
     echo -e "${GREEN}✅ Server list saved and normalised (HTTP $put_response)${NC}"
 
     # Reading it back proves it reached the volume, not just one worker's memory.
-    curl -s -b cookies.txt http://localhost:5000/api/servers -o reread-response.json
+    curl -s http://localhost:5000/api/servers -o reread-response.json
     if grep -q 'container-test' reread-response.json; then
         echo -e "${GREEN}   Configuration persisted to the data volume${NC}"
     else
@@ -201,7 +169,7 @@ if [ "$put_response" = "200" ] && grep -q 'http://127.0.0.1:9149' put-response.j
     fi
 
     # Leave the container as we found it.
-    curl -s -b cookies.txt -X PUT -H "Content-Type: application/json" \
+    curl -s -X PUT -H "Content-Type: application/json" \
         -d '{"servers":[],"cache_ttl_seconds":60}' \
         http://localhost:5000/api/servers -o /dev/null
     rm -f put-response.json reread-response.json
@@ -213,11 +181,10 @@ else
 fi
 echo ""
 
-# Test 6c: With no servers configured, the app must say so cleanly rather than
+# Test 4c: With no servers configured, the app must say so cleanly rather than
 # erroring, since that is exactly the state a new install is in.
-echo -e "${BLUE}🎙️  Test 6c: Testing readiness with no servers configured...${NC}"
+echo -e "${BLUE}🎙️  Test 4c: Testing readiness with no servers configured...${NC}"
 ready_response=$(curl -s -w "%{http_code}" \
-    -b cookies.txt \
     http://localhost:5000/api/ready \
     -o ready-response.json)
 
@@ -232,9 +199,9 @@ else
 fi
 echo ""
 
-# Test 6d: The front-end is useless if its assets are not in the image; the
+# Test 4d: The front-end is useless if its assets are not in the image; the
 # Dockerfile copies static/ explicitly and this catches a missed COPY.
-echo -e "${BLUE}📦 Test 6d: Testing static assets are served...${NC}"
+echo -e "${BLUE}📦 Test 4d: Testing static assets are served...${NC}"
 static_failed=0
 for asset in css/app.css js/app.js js/recorder.js js/capture-worklet.js js/settings.js manifest.webmanifest icons/icon-512.png; do
     asset_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:5000/static/$asset")
@@ -253,10 +220,9 @@ fi
 echo -e "${GREEN}✅ All static assets served${NC}"
 echo ""
 
-# Test 7: Main editor page
-echo -e "${BLUE}📝 Test 7: Testing main editor page...${NC}"
+# Test 5: Main editor page
+echo -e "${BLUE}📝 Test 5: Testing main editor page...${NC}"
 app_response=$(curl -s -w "%{http_code}" \
-    -b cookies.txt \
     http://localhost:5000/ \
     -o app-response.html)
 
@@ -287,8 +253,8 @@ else
 fi
 echo ""
 
-# Test 8: Container logs check
-echo -e "${BLUE}📋 Test 8: Checking container logs for errors...${NC}"
+# Test 6: Container logs check
+echo -e "${BLUE}📋 Test 6: Checking container logs for errors...${NC}"
 error_count=$($COMPOSE_CMD logs pywhispr-web 2>&1 | grep -i -c "error\|exception\|traceback" || true)
 if [ "$error_count" -eq 0 ]; then
     echo -e "${GREEN}✅ No errors found in container logs${NC}"
@@ -299,11 +265,10 @@ else
 fi
 echo ""
 
-# Test 9: Performance test
-echo -e "${BLUE}⚡ Test 9: Basic performance test...${NC}"
+# Test 7: Performance test
+echo -e "${BLUE}⚡ Test 7: Basic performance test...${NC}"
 start_time=$(date +%s%N)
 perf_response=$(curl -s -w "%{http_code}" \
-    -b cookies.txt \
     http://localhost:5000/api/servers \
     -o /dev/null)
 end_time=$(date +%s%N)
@@ -332,8 +297,6 @@ echo -e "${BLUE}📊 Test Summary:${NC}"
 echo -e "${GREEN}✅ Docker build${NC}"
 echo -e "${GREEN}✅ Container startup${NC}"
 echo -e "${GREEN}✅ Health check${NC}"
-echo -e "${GREEN}✅ Login page${NC}"
-echo -e "${GREEN}✅ Authentication${NC}"
 echo -e "${GREEN}✅ Server configuration API${NC}"
 echo -e "${GREEN}✅ Configuration persistence${NC}"
 echo -e "${GREEN}✅ Static assets${NC}"
@@ -342,6 +305,5 @@ echo -e "${GREEN}✅ Container logs${NC}"
 echo -e "${GREEN}✅ Performance test${NC}"
 echo ""
 echo -e "${BLUE}🌐 Application is ready at: http://localhost:5000${NC}"
-echo -e "${BLUE}🔑 Default credentials: user / password${NC}"
 echo ""
 echo -e "${GREEN}✨ Test suite completed successfully! ✨${NC}"

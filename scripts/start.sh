@@ -19,7 +19,6 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "🎉 pywhispr-web is now running!"
     echo "📱 Access the application at: http://localhost:5000"
-    echo "🔑 Default login: user / password"
     echo ""
     echo "🛑 To stop the application, run: docker-compose down"
     echo "📊 To view logs, run: docker-compose logs -f"

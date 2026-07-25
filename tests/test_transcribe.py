@@ -28,10 +28,6 @@ class RouteTestCase(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
 
-    def authenticate(self):
-        with self.app.session_transaction() as sess:
-            sess['authenticated'] = True
-
     def write_servers(self, *urls, active=None):
         config = pywhispr.load_config()
         config['servers'] = [{'id': f'id{i}', 'name': f'srv{i}', 'url': url} for i, url in enumerate(urls)]
@@ -43,38 +39,15 @@ class RouteTestCase(unittest.TestCase):
                              data=body, content_type='application/octet-stream')
 
 
-class TestAuthentication(RouteTestCase):
-    def test_api_routes_return_401_not_a_redirect(self):
-        # A redirect would arrive at fetch() as an opaque HTML success.
-        for path in ('/api/servers', '/api/servers/status', '/api/ready'):
+class TestOpenAccess(RouteTestCase):
+    def test_every_route_is_reachable_without_credentials(self):
+        # The app has no authentication; nothing may redirect to a login page.
+        for path in ('/', '/settings', '/api/servers', '/api/servers/status', '/api/ready'):
             with self.subTest(path=path):
-                response = self.app.get(path)
-                self.assertEqual(response.status_code, 401)
-                self.assertEqual(response.get_json()['error']['code'], 'unauthenticated')
-
-    def test_transcribe_requires_authentication(self):
-        self.assertEqual(self.post_audio().status_code, 401)
-
-    def test_settings_page_redirects_with_a_next_parameter(self):
-        response = self.app.get('/settings')
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('next=/settings', response.location)
-
-    def test_login_honours_next_and_refuses_other_origins(self):
-        response = self.app.post('/login?next=/settings',
-                                 data={'username': 'user', 'password': 'password'})
-        self.assertTrue(response.location.endswith('/settings'))
-
-        response = self.app.post('/login?next=https://evil.example.com',
-                                 data={'username': 'user', 'password': 'password'})
-        self.assertTrue(response.location.endswith('/'))
+                self.assertEqual(self.app.get(path).status_code, 200)
 
 
 class TestServerConfigRoutes(RouteTestCase):
-    def setUp(self):
-        super().setUp()
-        self.authenticate()
-
     def test_get_servers_is_empty_initially(self):
         data = self.app.get('/api/servers').get_json()
         self.assertEqual(data['servers'], [])
@@ -124,10 +97,6 @@ class TestServerConfigRoutes(RouteTestCase):
 
 
 class TestReadyRoute(RouteTestCase):
-    def setUp(self):
-        super().setUp()
-        self.authenticate()
-
     def test_reports_ready_with_the_recording_limits(self):
         self.write_servers('http://a:9149')
         with patch.object(pywhispr.requests, 'get',
@@ -161,10 +130,6 @@ class TestReadyRoute(RouteTestCase):
 
 
 class TestTranscribeRoute(RouteTestCase):
-    def setUp(self):
-        super().setUp()
-        self.authenticate()
-
     def test_relays_text_and_names_the_server(self):
         self.write_servers('http://a:9149')
         with patch.object(pywhispr.requests, 'get', return_value=FakeResponse(200, health())), \

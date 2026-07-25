@@ -10,11 +10,6 @@ services:
     restart: unless-stopped
     environment:
       - FLASK_ENV=production
-      - APP_USERNAME=user
-      - APP_PASSWORD=password
-      - SECRET_KEY=your-super-secret-key-change-this-in-production
-      # Set this when serving over HTTPS (which phones require for microphone access).
-      # - SESSION_COOKIE_SECURE=true
       # Optional seed for a first run; after that the settings screen is the
       # source of truth. Format: "name=url,name=url".
       # - PYWHISPR_SERVERS=desktop=192.168.1.10:9149,laptop=192.168.1.22:9149

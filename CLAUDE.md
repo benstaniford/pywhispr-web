@@ -72,7 +72,7 @@ phone ──HTTPS──> pywhispr-web (Flask :5000) ──HTTP──> PyWhispr :
 
 ### Core files
 
-- **`app.py`** — routes, session auth, and the transcription proxy. Deliberately thin
+- **`app.py`** — routes and the transcription proxy. Deliberately thin
 - **`pywhispr_client.py`** — everything about the upstream: server registry, health
   probing, failover, and the liveness cache. No Flask imports, so it is unit-testable
   without a request context
@@ -161,9 +161,9 @@ immediate.
 ## Development Guidelines
 
 ### Adding a route
-- Protected routes get `@login_required`. Routes under `/api/` return a JSON 401 rather
-  than redirecting, because a redirect reaches `fetch()` as an opaque HTML success
-- `/health` must stay unauthenticated and unchanged — the Docker `HEALTHCHECK` and
+- There is no authentication: every route is open, and nothing may redirect to a login
+  page. `/api/` routes always answer JSON, since only `fetch()` calls them
+- `/health` must stay unchanged — the Docker `HEALTHCHECK` and
   `test-docker/test-container.sh` both depend on it
 
 ### Front-end conventions
@@ -177,12 +177,8 @@ immediate.
 ### Testing conventions
 - `tests/test_servers.py` — `pywhispr_client` in isolation; patch
   `pywhispr_client.CONFIG_PATH` at a `TemporaryDirectory` and patch `requests`
-- `tests/test_transcribe.py` — routes through `app.test_client()`
-- Authenticate in tests with the established idiom:
-  ```python
-  with self.app.session_transaction() as sess:
-      sess['authenticated'] = True
-  ```
+- `tests/test_transcribe.py` — routes through `app.test_client()`. No session setup is
+  needed; `TestOpenAccess` guards against auth creeping back in
 - `tests/test_imports.py` runs both as a script (non-zero exit on failure) and as a
   unittest module. Keep its checks inside functions — a module-level `sys.exit()` aborts
   the whole pytest run during collection
@@ -191,10 +187,6 @@ immediate.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_USERNAME` | `user` | Authentication username |
-| `APP_PASSWORD` | `password` | Authentication password |
-| `SECRET_KEY` | `your-secret-key-change-this-in-production` | Flask session secret |
-| `SESSION_COOKIE_SECURE` | unset | Set to `true` when serving over HTTPS |
 | `PYWHISPR_CONFIG_PATH` | `/data/config.json` | Server list and cache location |
 | `PYWHISPR_SERVERS` | unset | First-run seed only, `name=url,name=url` |
 | `APP_VERSION` | `dev` | Shown on the settings screen |

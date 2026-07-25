@@ -12,12 +12,10 @@ Comprehensive test script that builds and validates the Docker container functio
 1. **Docker Build** - Builds the container from scratch
 2. **Container Startup** - Starts the container and waits for healthy status
 3. **Health Check** - Validates the `/health` endpoint
-4. **Login Page** - Ensures the web interface is accessible
-5. **Authentication** - Tests login functionality
-6. **Data API** - Validates the main API endpoint
-7. **Main Application Page** - Tests the full web interface
-8. **Container Logs** - Checks for errors in container logs
-9. **Performance** - Basic response time measurement
+4. **Data API** - Validates the main API endpoint, its persistence and static assets
+5. **Main Application Page** - Tests the full web interface
+6. **Container Logs** - Checks for errors in container logs
+7. **Performance** - Basic response time measurement
 
 ### Usage
 
@@ -62,12 +60,10 @@ If tests fail:
 1. **Build failures**: Check Docker is running and you have sufficient disk space
 2. **Container won't start**: Check port 5000 is available
 3. **Health check fails**: Wait longer or check container logs with `docker compose logs`
-4. **Authentication fails**: Verify default credentials (user/password) haven't changed
-5. **API tests fail**: Check that pywhispr-web is running correctly
+4. **API tests fail**: Check that pywhispr-web is running correctly
 
 ### Customization
 
 You can modify the test script variables at the top:
 - `TEST_PORT`: Change if port 5000 is unavailable
-- `TEST_USERNAME`/`TEST_PASSWORD`: Change test credentials
 - `TIMEOUT`: Adjust wait times for slower systems
